@@ -15,6 +15,16 @@ jobs:
       - name: Checkout do repositório
         uses: actions/checkout@v4
 
+      - name: Instalar dependências Python
+        run: |
+          pip3 install -r requirements.txt --break-system-packages
+
+      - name: Instalar Playwright + Chromium
+        run: |
+          pip3 install playwright --break-system-packages
+          python3 -m playwright install chromium
+          python3 -m playwright install-deps chromium || true
+
       - name: Executar pipeline
         env:
           HEADLESS:                   "true"
