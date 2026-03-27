@@ -17,7 +17,8 @@ jobs:
 
       - name: Instalar dependências Python
         run: |
-          pip3 install -r requirements.txt --break-system-packages
+          pip3 install -r requirements.txt 
+        
 
       - name: Instalar Playwright + Chromium
         run: |
