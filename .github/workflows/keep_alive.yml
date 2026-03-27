@@ -1,0 +1,30 @@
+name: Keep Alive — Manter repositório ativo
+
+on:
+  schedule:
+    # Toda sexta-feira às 10:00 UTC (07:00 Brasília)
+    # Roda antes da segunda para garantir que o repositório está ativo
+    - cron: '0 10 * * 5'
+  workflow_dispatch:
+
+permissions:
+  contents: write  # necessário para fazer push no repositório
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Atualizar timestamp de atividade
+        run: |
+          echo "Última atividade: $(date -u '+%d/%m/%Y %H:%M UTC')" > .github/keep_alive.txt
+
+      - name: Commit e push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/keep_alive.txt
+          git commit -m "chore: keep alive $(date -u '+%d/%m/%Y')" || echo "Nada a commitar"
+          git push

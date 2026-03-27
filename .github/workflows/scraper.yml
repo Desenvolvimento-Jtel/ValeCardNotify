@@ -1,0 +1,66 @@
+name: Scraper Valecard — Semanal
+
+on:
+  schedule:
+    # Toda segunda-feira às 11:00 UTC = 08:00 horário de Brasília
+    - cron: '0 11 * * 1'
+  workflow_dispatch:  # permite execução manual
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Instalar Playwright + Chromium
+        run: |
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Executar pipeline
+        env:
+          HEADLESS:                   "true"
+          SITE_URL:                   ${{ secrets.SITE_URL }}
+          SITE_USERNAME:              ${{ secrets.SITE_USERNAME }}
+          SITE_PASSWORD:              ${{ secrets.SITE_PASSWORD }}
+          GRAPH_TENANT_ID:            ${{ secrets.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID:            ${{ secrets.GRAPH_CLIENT_ID }}
+          GRAPH_CLIENT_SECRET:        ${{ secrets.GRAPH_CLIENT_SECRET }}
+          GRAPH_MAILBOX_ENVIO:        ${{ secrets.GRAPH_MAILBOX_ENVIO }}
+          EMAIL_DESTINATARIOS:        ${{ secrets.EMAIL_DESTINATARIOS }}
+          EMAIL_DESTINATARIOS_AVISO:  ${{ secrets.EMAIL_DESTINATARIOS_AVISO }}
+          EMAIL_LINK_JUSTIFICATIVA:   ${{ secrets.EMAIL_LINK_JUSTIFICATIVA }}
+          MYSQL_HOST:                 ${{ secrets.MYSQL_HOST }}
+          MYSQL_PORT:                 ${{ secrets.MYSQL_PORT }}
+          MYSQL_DB:                   ${{ secrets.MYSQL_DB }}
+          MYSQL_USER:                 ${{ secrets.MYSQL_USER }}
+          MYSQL_PASSWORD:             ${{ secrets.MYSQL_PASSWORD }}
+          MYSQL_TABELA:               ${{ secrets.MYSQL_TABELA }}
+        run: python scraper/main.py
+
+      - name: Salvar artefatos em caso de erro
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-${{ github.run_id }}
+          path: output/
+          retention-days: 7
+
+      - name: Salvar log de execução
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: log-${{ github.run_id }}
+          path: output/execucao.log
+          retention-days: 30
