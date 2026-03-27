@@ -30,6 +30,14 @@ jobs:
           # Correção para Ubuntu 24 — libasound2 foi renomeado para libasound2t64
           sudo apt-get install -y libasound2t64 --fix-missing || true
 
+      - name: Testar conectividade com o site
+        run: |
+          echo "IP do runner:"
+          curl -s https://api.ipify.org
+          echo ""
+          echo "Testando acesso ao site:"
+          curl -I --max-time 10 https://siag3.valecard.com.br/ || echo "SITE INACESSIVEL"
+
       - name: Executar pipeline
         env:
           HEADLESS:                   "true"
@@ -49,7 +57,6 @@ jobs:
           MYSQL_USER:                 ${{ secrets.MYSQL_USER }}
           MYSQL_PASSWORD:             ${{ secrets.MYSQL_PASSWORD }}
           MYSQL_TABELA:               ${{ secrets.MYSQL_TABELA }}
-        #run: python scraper/main.py
         run: python -m scraper.main
 
       - name: Salvar artefatos em caso de erro
@@ -57,7 +64,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: debug-${{ github.run_id }}
-          path: output/
+          path: |
+            output/
           retention-days: 7
 
       - name: Salvar log de execução
