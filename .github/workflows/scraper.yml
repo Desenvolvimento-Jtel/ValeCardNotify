@@ -8,7 +8,8 @@ on:
 
 jobs:
   pipeline:
-    runs-on: ubuntu-latest
+    #runs-on: ubuntu-latest
+    runs-on: [self-hosted, vps-easypanel-valecard]
     timeout-minutes: 30
 
     steps:
