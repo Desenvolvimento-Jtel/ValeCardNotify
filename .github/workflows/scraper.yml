@@ -26,7 +26,9 @@ jobs:
       - name: Instalar Playwright + Chromium
         run: |
           playwright install chromium
-          playwright install-deps chromium
+          playwright install-deps chromium || true
+          # Correção para Ubuntu 24 — libasound2 foi renomeado para libasound2t64
+          sudo apt-get install -y libasound2t64 --fix-missing || true
 
       - name: Executar pipeline
         env:
