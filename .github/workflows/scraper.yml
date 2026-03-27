@@ -15,6 +15,14 @@ jobs:
       - name: Checkout do repositório
         uses: actions/checkout@v4
 
+      
+      - name: Forçar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+        
+
       - name: Instalar dependências Python
         run: |
           pip3 install -r requirements.txt 
