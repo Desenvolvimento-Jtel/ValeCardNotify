@@ -42,6 +42,12 @@ def fazer_login() -> tuple[Page, Browser]:
     log.info(f"Acessando: {SITE_URL}")
     page.goto(SITE_URL, wait_until="domcontentloaded", timeout=60_000)
 
+    # Screenshot imediato para diagnóstico — ver o que carregou
+    os.makedirs("output", exist_ok=True)
+    page.screenshot(path="output/pagina_inicial.png")
+    log.info(f"URL após goto: {page.url}")
+    log.info(f"Titulo da pagina: {page.title()}")
+
     # Aguarda a página estabilizar completamente
     page.wait_for_selector("#tenantList", state="visible", timeout=60_000)
     page.wait_for_timeout(2_000)
@@ -69,10 +75,6 @@ def fazer_login() -> tuple[Page, Browser]:
 
     page.wait_for_load_state("networkidle", timeout=60_000)
     page.wait_for_timeout(3_000)
-
-    # Cria pasta output se não existir (necessário no GitHub Actions)
-    import os
-    os.makedirs("output", exist_ok=True)
 
     page.screenshot(path="output/pos_login_debug.png")
     log.info(f"URL após login: {page.url}")
