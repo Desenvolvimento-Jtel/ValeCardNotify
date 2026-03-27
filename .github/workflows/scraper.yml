@@ -16,28 +16,17 @@ jobs:
       - name: Checkout do repositório
         uses: actions/checkout@v4
 
-      - name: Configurar Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Instalar dependências
-        run: pip install -r requirements.txt
+      - name: Configurar Python e dependências
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y python3 python3-pip
+          pip3 install -r requirements.txt --break-system-packages
 
       - name: Instalar Playwright + Chromium
         run: |
-          playwright install chromium
-          playwright install-deps chromium || true
-          # Correção para Ubuntu 24 — libasound2 foi renomeado para libasound2t64
+          python3 -m playwright install chromium
+          python3 -m playwright install-deps chromium || true
           sudo apt-get install -y libasound2t64 --fix-missing || true
-
-      - name: Testar conectividade com o site
-        run: |
-          echo "IP do runner:"
-          curl -s https://api.ipify.org
-          echo ""
-          echo "Testando acesso ao site:"
-          curl -I --max-time 10 https://siag3.valecard.com.br/ || echo "SITE INACESSIVEL"
 
       - name: Executar pipeline
         env:
@@ -58,7 +47,7 @@ jobs:
           MYSQL_USER:                 ${{ secrets.MYSQL_USER }}
           MYSQL_PASSWORD:             ${{ secrets.MYSQL_PASSWORD }}
           MYSQL_TABELA:               ${{ secrets.MYSQL_TABELA }}
-        run: python -m scraper.main
+        run: python3 -m scraper.main
 
       - name: Salvar artefatos em caso de erro
         if: failure()
