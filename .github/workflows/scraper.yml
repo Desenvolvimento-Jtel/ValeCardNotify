@@ -49,7 +49,8 @@ jobs:
           MYSQL_USER:                 ${{ secrets.MYSQL_USER }}
           MYSQL_PASSWORD:             ${{ secrets.MYSQL_PASSWORD }}
           MYSQL_TABELA:               ${{ secrets.MYSQL_TABELA }}
-        run: python scraper/main.py
+        #run: python scraper/main.py
+        run: python -m scraper.main
 
       - name: Salvar artefatos em caso de erro
         if: failure()
