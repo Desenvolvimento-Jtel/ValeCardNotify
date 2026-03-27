@@ -4,29 +4,16 @@ on:
   schedule:
     # Toda segunda-feira às 11:00 UTC = 08:00 horário de Brasília
     - cron: '0 11 * * 1'
-  workflow_dispatch:  # permite execução manual
+  workflow_dispatch:
 
 jobs:
   pipeline:
-    #runs-on: ubuntu-latest
     runs-on: [self-hosted, vps-easypanel-valecard]
     timeout-minutes: 30
 
     steps:
       - name: Checkout do repositório
         uses: actions/checkout@v4
-
-      - name: Configurar Python e dependências
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y python3 python3-pip
-          pip3 install -r requirements.txt --break-system-packages
-
-      - name: Instalar Playwright + Chromium
-        run: |
-          python3 -m playwright install chromium
-          python3 -m playwright install-deps chromium || true
-          sudo apt-get install -y libasound2t64 --fix-missing || true
 
       - name: Executar pipeline
         env:
@@ -54,8 +41,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: debug-${{ github.run_id }}
-          path: |
-            output/
+          path: output/
           retention-days: 7
 
       - name: Salvar log de execução
