@@ -2,9 +2,8 @@ name: Keep Alive — Manter repositório ativo
 
 on:
   schedule:
-    # Toda sexta-feira às 10:00 UTC (07:00 Brasília)
-    # Roda antes da segunda para garantir que o repositório está ativo
-    - cron: '0 10 * * 5'
+    # Toda sexta-feira às 4:30 UTC (01:30 Brasília)
+    - cron: '30 4 * * 1'
   workflow_dispatch:
 
 permissions:

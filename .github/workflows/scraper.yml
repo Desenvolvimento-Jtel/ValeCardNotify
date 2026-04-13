@@ -2,8 +2,8 @@ name: Scraper Valecard — Semanal
 
 on:
   schedule:
-    # Toda segunda-feira às 11:00 UTC = 08:00 horário de Brasília
-    - cron: '0 11 * * 1'
+    # Toda segunda-feira às 10:00 UTC = 07:00 horário de Brasília
+    - cron: '0 10 * * 1'
   workflow_dispatch:
 
 jobs:
