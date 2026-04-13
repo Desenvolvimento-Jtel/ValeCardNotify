@@ -49,7 +49,7 @@ MAPA_COLUNAS = {
     "NUMERO TAG NFC":       "numero_tag_nfc",
     "CLIENTE":              "cliente",
     "G.PROJETO":            "g_projeto",
-    "OBSERVAÇÃO":           "observacao",
+    "OBSERVACAO":           "observacao",
 }
 
 
@@ -60,8 +60,10 @@ def criar_engine():
     )
     return create_engine(url, pool_pre_ping=True)
 
-'''
+
 def _tratar_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+
+    # 1. Padronização inicial
     df.columns = df.columns.str.strip().str.upper()
 
     colunas_xlsx     = set(df.columns)
@@ -70,105 +72,37 @@ def _tratar_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     faltando_no_xlsx = colunas_mapa - colunas_xlsx
 
     if nao_mapeadas:
-        log.warning(f"Colunas não mapeadas (ignoradas): {nao_mapeadas}")
+        log.warning(f"Colunas nao mapeadas (ignoradas): {nao_mapeadas}")
+
+    # 2. Injeta colunas faltantes como NULL
     if faltando_no_xlsx:
-        log.warning(f"Colunas esperadas não encontradas: {faltando_no_xlsx}")
-
-    colunas_validas = [c for c in df.columns if c in MAPA_COLUNAS]
-    df = df[colunas_validas].copy()
-    df.rename(columns=MAPA_COLUNAS, inplace=True)
-    df.dropna(how="all", inplace=True)
-
-    # DATA → datetime (formato BR: DD/MM/AAAA HH:MM:SS)
-    if "data" in df.columns:
-        df["data"] = pd.to_datetime(
-            df["data"], format="%d/%m/%Y %H:%M:%S", errors="coerce"
-        )
-
-    # Numéricos — o Excel já entrega como float, basta garantir o tipo correto
-    # NÃO fazer replace de ponto/vírgula pois os valores já vêm em formato numérico
-    for col in ["consumo", "quantidade", "valor_unitario", "valor_total", "hodometro"]:
-        if col in df.columns:
-            # Se já for numérico (float/int do Excel), converte direto
-            # Se vier como string com vírgula (edge case), trata adequadamente
-            def converter_numero(val):
-                if pd.isna(val):
-                    return None
-                if isinstance(val, (int, float)):
-                    return float(val)
-                # Caso venha como string
-                s = str(val).strip()
-                # Formato BR: 1.234,56 → remove ponto de milhar, troca vírgula por ponto
-                if "," in s and "." in s:
-                    s = s.replace(".", "").replace(",", ".")
-                elif "," in s:
-                    s = s.replace(",", ".")
-                try:
-                    return float(s)
-                except ValueError:
-                    return None
-
-            df[col] = df[col].apply(converter_numero)
-
-    # Strings
-    colunas_texto = [
-        "placa", "modelo", "produto", "nome_fantasia", "tipo_combustivel",
-        "responsavel_veiculo", "matricula", "motorista", "cidade", "estado",
-        "unidade", "numero_fatura", "cnpj", "razao_social", "endereco",
-        "bairro", "tipo_frota", "numero_cartao", "filial", "centro_resultado",
-        "numero_tag_nfc", "cliente", "g_projeto", "observacao",
-    ]
-    for col in colunas_texto:
-        if col in df.columns:
-            df[col] = df[col].astype(str).str.strip().replace("nan", None)
-
-    # Ordena por data crescente
-    if "data" in df.columns:
-        df.sort_values("data", ascending=True, inplace=True)
-        df.reset_index(drop=True, inplace=True)
-
-    df["_inserido_em"] = pd.Timestamp.now()
-
-    log.info(f"Registros válidos: {len(df)}")
-    return df
-''' 
-def _tratar_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    # 1. Padronização inicial
-    df.columns = df.columns.str.strip().str.upper()
-
-    colunas_xlsx = set(df.columns)
-    colunas_mapa = set(MAPA_COLUNAS.keys())
-    nao_mapeadas = colunas_xlsx - colunas_mapa
-    faltando_no_xlsx = colunas_mapa - colunas_xlsx
-
-    if nao_mapeadas:
-        log.warning(f"Colunas não mapeadas (ignoradas): {nao_mapeadas}")
-    
-    # --- CORREÇÃO AQUI: Injetar colunas faltantes como NULL antes do filtro ---
-    if faltando_no_xlsx:
-        log.warning(f"Colunas esperadas não encontradas no XLSX: {faltando_no_xlsx}. Inserindo como NULL.")
+        log.warning(f"Colunas esperadas nao encontradas: {faltando_no_xlsx}. Inserindo como NULL.")
         for col in faltando_no_xlsx:
-            df[col] = None  # Garante que a coluna exista no DataFrame
+            df[col] = None
 
-    # 2. Agora o filtro pega todas as colunas do MAPA_COLUNAS (as reais e as injetadas)
-    colunas_para_manter = list(MAPA_COLUNAS.keys())
-    df = df[colunas_para_manter].copy()
-    
-    # 3. Renomear para os nomes do Banco de Dados
+    # 3. Mantém apenas as colunas do mapeamento
+    df = df[list(MAPA_COLUNAS.keys())].copy()
+
+    # 4. Renomeia para os nomes do banco
     df.rename(columns=MAPA_COLUNAS, inplace=True)
-    
-    # Remove linhas totalmente vazias (caso existam no Excel)
+
+    # Remove linhas totalmente vazias
     df.dropna(how="all", inplace=True)
 
-    # --- RESTANTE DO TRATAMENTO (DATA E TIPOS) ---
-
-    # DATA → datetime
+    # ── DATA → datetime ───────────────────────────────────────────────────────
+    # O Valecard exporta datas já no horário de Brasília — preservar como está
     if "data" in df.columns:
         df["data"] = pd.to_datetime(
-            df["data"], format="%d/%m/%Y %H:%M:%S", errors="coerce"
+            df["data"],
+            format="%d/%m/%Y %H:%M:%S",
+            errors="coerce",
+            utc=False,
         )
+        # Remove timezone info se existir (garante naive datetime sem conversão)
+        if hasattr(df["data"].dtype, "tz") and df["data"].dtype.tz is not None:
+            df["data"] = df["data"].dt.tz_localize(None)
 
-    # Tratamento de Numéricos
+    # ── Numéricos ─────────────────────────────────────────────────────────────
     for col in ["consumo", "quantidade", "valor_unitario", "valor_total", "hodometro"]:
         if col in df.columns:
             def converter_numero(val):
@@ -177,15 +111,17 @@ def _tratar_dataframe(df: pd.DataFrame) -> pd.DataFrame:
                 if isinstance(val, (int, float)):
                     return float(val)
                 s = str(val).strip()
-                if "," in s:
+                if "," in s and "." in s:
                     s = s.replace(".", "").replace(",", ".")
+                elif "," in s:
+                    s = s.replace(",", ".")
                 try:
                     return float(s)
                 except ValueError:
                     return None
             df[col] = df[col].apply(converter_numero)
 
-    # Tratamento de Strings (Garante que as injetadas fiquem como None/NULL)
+    # ── Strings ───────────────────────────────────────────────────────────────
     colunas_texto = [
         "placa", "modelo", "produto", "nome_fantasia", "tipo_combustivel",
         "responsavel_veiculo", "matricula", "motorista", "cidade", "estado",
@@ -195,19 +131,19 @@ def _tratar_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     ]
     for col in colunas_texto:
         if col in df.columns:
-            # Para as colunas que injetamos como None, o astype(str) as tornaria "None" (string)
-            # Por isso usamos o mask para manter o valor nulo real para o banco
-            df[col] = df[col].astype(str).str.strip().replace(["nan", "None", "None"], None)
+            df[col] = df[col].astype(str).str.strip().replace(
+                ["nan", "None", "none"], None
+            )
             df[col] = df[col].mask(df[col].isnull(), None)
 
-    # Ordenação e Metadados
+    # ── Ordena por data crescente ─────────────────────────────────────────────
     if "data" in df.columns:
         df.sort_values("data", ascending=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
 
     df["_inserido_em"] = pd.Timestamp.now()
 
-    log.info(f"Registros prontos para processamento: {len(df)}")
+    log.info(f"Registros prontos para inserir: {len(df)}")
     return df
 
 
@@ -219,14 +155,14 @@ def inserir_no_mysql(caminho_xlsx: Path) -> tuple[int, int]:
     df = _tratar_dataframe(df_raw)
 
     if df.empty:
-        log.warning("Nenhum registro válido.")
+        log.warning("Nenhum registro valido.")
         return 0, 0
 
     engine = criar_engine()
     try:
         with engine.begin() as conn:
             conn.execute(text("SELECT 1"))
-        log.info("Conexão MySQL estabelecida.")
+        log.info("Conexao MySQL estabelecida.")
 
         df.to_sql(
             name=TABELA_DESTINO,
@@ -235,7 +171,7 @@ def inserir_no_mysql(caminho_xlsx: Path) -> tuple[int, int]:
             index=False,
             chunksize=500,
         )
-        log.info(f"✅ {len(df)} registros inseridos em '{TABELA_DESTINO}'.")
+        log.info(f"{len(df)} registros inseridos em '{TABELA_DESTINO}'.")
         return len(df), 0
 
     except SQLAlchemyError as e:
