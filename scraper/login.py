@@ -1,7 +1,7 @@
 """
 login.py - Login no portal Valecard (USUARIO TERCEIRO)
 """
-
+""" 
 import os
 import logging
 from playwright.sync_api import sync_playwright, Page, Browser
@@ -89,4 +89,117 @@ def fazer_login() -> tuple[Page, Browser]:
         raise
 
     log.info("Login realizado com sucesso.")
+    return page, browser
+"""
+
+import os
+import logging
+from playwright.sync_api import sync_playwright, Page, Browser
+ 
+log = logging.getLogger(__name__)
+ 
+SITE_URL      = os.environ["SITE_URL"]
+SITE_USERNAME = os.environ["SITE_USERNAME"]
+SITE_PASSWORD = os.environ["SITE_PASSWORD"]
+TENANT_VALUE  = "usuarioterceiro.valecard.com.br"
+ 
+HEADLESS = os.environ.get("HEADLESS", "true").strip().lower() != "false"
+ 
+ 
+def fazer_login() -> tuple[Page, Browser]:
+    playwright = sync_playwright().start()
+    browser = playwright.chromium.launch(
+        headless=HEADLESS,
+        args=[
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-setuid-sandbox",
+            "--no-zygote",
+        ],
+        slow_mo=200,
+    )
+    log.info(f"Browser iniciado — headless: {HEADLESS}")
+    context = browser.new_context(
+        viewport={"width": 1280, "height": 900},
+        locale="pt-BR",
+        accept_downloads=True,
+    )
+    page = context.new_page()
+ 
+    log.info(f"Acessando: {SITE_URL}")
+    page.goto(SITE_URL, wait_until="domcontentloaded", timeout=60_000)
+ 
+    # Aguarda redirect SAML estabilizar
+    page.wait_for_load_state("networkidle", timeout=30_000)
+ 
+    # Screenshot imediato para diagnóstico
+    os.makedirs("output", exist_ok=True)
+    page.screenshot(path="output/pagina_inicial.png")
+    log.info(f"URL após goto: {page.url}")
+ 
+    # Salva HTML para diagnóstico
+    try:
+        html = page.content()
+        with open("output/pagina_inicial.html", "w", encoding="utf-8") as f:
+            f.write(html)
+    except Exception:
+        pass
+ 
+    # Lê título com proteção contra redirect em andamento
+    try:
+        titulo = page.title()
+        log.info(f"Titulo da pagina: {titulo}")
+    except Exception:
+        log.warning("Nao foi possivel ler o titulo.")
+ 
+    # Aguarda formulário de login
+    page.wait_for_selector("#tenantList", state="visible", timeout=60_000)
+    page.wait_for_timeout(2_000)
+ 
+    log.info("Selecionando tipo de acesso: USUARIO TERCEIRO")
+    page.select_option("#tenantList", value=TENANT_VALUE)
+    page.wait_for_timeout(1_500)
+ 
+    log.info("Preenchendo usuário...")
+    page.click("#username_tmp")
+    page.fill("#username_tmp", SITE_USERNAME)
+    page.dispatch_event("#username_tmp", "input")
+    page.dispatch_event("#username_tmp", "change")
+    page.wait_for_timeout(500)
+ 
+    log.info("Preenchendo senha...")
+    page.click("#password")
+    page.fill("#password", SITE_PASSWORD)
+    page.dispatch_event("#password", "input")
+    page.dispatch_event("#password", "change")
+    page.wait_for_timeout(500)
+ 
+    log.info("Clicando em LOGIN...")
+    page.click("button[type='submit']")
+ 
+    # Após login SAML, aguarda redirect de volta para o portal
+    # Pode redirecionar para siag3.valecard.com.br ou fleet.valecard.com.br
+    log.info("Aguardando redirect pós-login...")
+    page.wait_for_load_state("networkidle", timeout=60_000)
+    page.wait_for_timeout(5_000)
+ 
+    page.screenshot(path="output/pos_login_debug.png")
+    log.info(f"URL após login: {page.url}")
+ 
+    # Verifica se o login foi bem-sucedido — aguarda qualquer elemento da tela principal
+    try:
+        page.wait_for_selector("div[role='button']", timeout=30_000)
+        log.info("Login realizado com sucesso.")
+    except Exception as e:
+        # Tenta seletor alternativo — nova interface do fleet
+        try:
+            page.wait_for_selector("mat-sidenav, app-root, .main-container", timeout=15_000)
+            log.info("Login realizado com sucesso (novo portal).")
+        except Exception:
+            page.screenshot(path="output/erro_screenshot.png")
+            log.error(f"Falha ao confirmar login. URL atual: {page.url}")
+            browser.close()
+            raise e
+ 
     return page, browser
