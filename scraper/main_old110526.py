@@ -1,27 +1,25 @@
 """
 main.py - Orquestrador principal
-Fluxo: Login → Download xlsx → Corrige datas → MySQL → E‑mails
+Fluxo: Login → Download xlsx → Corrige datas → MySQL → E-mails
 """
 
 import logging
 import sys
 import traceback
 from pathlib import Path
-from datetime import timezone, timedelta
-
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Força UTF‑8 no terminal Windows
-if sys.stdout.encoding != "utf-8":
+# Força UTF-8 no terminal Windows
+if sys.stdout.encoding != 'utf-8':
     try:
-        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stdout.reconfigure(encoding='utf-8')
     except Exception:
         pass
-if sys.stderr.encoding != "utf-8":
+if sys.stderr.encoding != 'utf-8':
     try:
-        sys.stderr.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding='utf-8')
     except Exception:
         pass
 
@@ -45,38 +43,43 @@ SCREENSHOT_ERRO = Path("output/erro_screenshot.png")
 
 
 def corrigir_datas_xlsx(caminho_xlsx: Path) -> Path:
-    """Converte a coluna ``DATA`` de UTC para o horário de Brasília (UTC‑3).
-
-    O arquivo exportado pelo Valecard vem em UTC quando o Action roda em
-    ambiente UTC.  O ajuste garante que a planilha enviada por e‑mail contenha
-    a data correta para o Brasil.
+    """
+    Lê o xlsx original, soma 3 horas na coluna DATA (UTC → Brasília)
+    e salva um novo arquivo corrigido para envio por e-mail.
+    Retorna o Path do arquivo corrigido.
     """
     import pandas as pd
 
     df = pd.read_excel(caminho_xlsx, engine="openpyxl")
 
-    # Identifica a coluna DATA (case‑insensitive)
-    col_data = next((c for c in df.columns if c.strip().upper() == "DATA"), None)
+    # Identifica a coluna DATA (case-insensitive)
+    col_data = next(
+        (c for c in df.columns if c.strip().upper() == "DATA"), None
+    )
 
     if col_data:
-        # Interpreta como UTC
         df[col_data] = pd.to_datetime(
-            df[col_data], errors="coerce", dayfirst=True, utc=True
+            df[col_data],
+            errors="coerce",
+            dayfirst=True,
+            utc=False,
         )
-        # Converte para o fuso de Brasília (UTC‑3)
-        brasil_tz = timezone(timedelta(hours=-3))
-        df[col_data] = df[col_data].dt.tz_convert(brasil_tz)
-        # Remove informação de timezone (datetime "naive")
-        df[col_data] = df[col_data].dt.tz_localize(None)
-        # Formata como string no padrão dd/mm/aaaa HH:MM:SS
-        df[col_data] = df[col_data].dt.strftime("%d/%m/%Y %H:%M:%S")
-        log.info("Datas convertidas de UTC → horário de Brasília.")
-    else:
-        log.warning("Coluna DATA não encontrada no xlsx — enviando sem correção.")
+        # Remove timezone se existir
+        if hasattr(df[col_data].dtype, "tz") and df[col_data].dtype.tz is not None:
+            df[col_data] = df[col_data].dt.tz_localize(None)
 
+        # Formata como string para manter o padrão visual no Excel
+        df[col_data] = df[col_data].dt.strftime("%d/%m/%Y %H:%M:%S")
+
+        log.info("Datas preservadas no horario original do Valecard.")
+    else:
+        log.warning("Coluna DATA nao encontrada no xlsx — enviando sem correcao.")
+
+    # Salva arquivo corrigido
     caminho_corrigido = caminho_xlsx.parent / (caminho_xlsx.stem + "_br.xlsx")
     df.to_excel(caminho_corrigido, index=False, engine="openpyxl")
     log.info(f"Xlsx corrigido salvo: {caminho_corrigido}")
+
     return caminho_corrigido
 
 
@@ -97,26 +100,24 @@ def main():
         page, browser = fazer_login()
 
         # 2. Download
-        etapa_atual = "Download do relatório"
-        log.info("[2/4] Navegando e exportando relatório...")
+        etapa_atual = "Download do relatorio"
+        log.info("[2/4] Navegando e exportando relatorio...")
         caminho_xlsx = navegar_e_exportar(page)
         log.info(f"      Arquivo original: {caminho_xlsx}")
 
-        # 3. Corrige datas do xlsx (UTC → Brasília) para envio por e‑mail
-        log.info("      Corrigindo datas do xlsx para horário de Brasília...")
+        # 3. Corrige datas do xlsx (UTC → Brasília) para envio por e-mail
+        log.info("      Corrigindo datas do xlsx para horario de Brasilia...")
         caminho_xlsx_corrigido = corrigir_datas_xlsx(caminho_xlsx)
 
-        # 4. Inserção no MySQL (inserir.py já cuida das datas)
-        etapa_atual = "Inserção no MySQL"
+        # 4. Insert MySQL (inserir.py já soma +3h internamente)
+        etapa_atual = "Insercao no MySQL"
         log.info("[3/4] Inserindo dados no MySQL...")
         registros_inseridos, registros_atualizados = inserir_no_mysql(caminho_xlsx)
-        log.info(
-            f"      Inseridos: {registros_inseridos} | Atualizados: {registros_atualizados}"
-        )
+        log.info(f"      Inseridos: {registros_inseridos} | Atualizados: {registros_atualizados}")
 
-        # 5. E‑mails com xlsx corrigido como anexo
-        etapa_atual = "Envio de e‑mails"
-        log.info("[4/4] Enviando e‑mails...")
+        # 5. E-mails com xlsx corrigido como anexo
+        etapa_atual = "Envio de e-mails"
+        log.info("[4/4] Enviando e-mails...")
         enviar_email(
             caminho_xlsx=caminho_xlsx_corrigido,
             data_inicio=data_inicio,
@@ -124,17 +125,20 @@ def main():
             registros_inseridos=registros_inseridos,
             registros_atualizados=registros_atualizados,
         )
-        log.info("      E‑mails enviados!")
+        log.info("      E-mails enviados!")
 
     except Exception as e:
         log.error(f"Erro na etapa '{etapa_atual}': {e}", exc_info=True)
+
         if page and not SCREENSHOT_ERRO.exists():
             try:
                 page.screenshot(path=str(SCREENSHOT_ERRO))
                 log.info(f"Screenshot salvo: {SCREENSHOT_ERRO}")
             except Exception as ss_err:
-                log.warning(f"Não foi possível tirar screenshot: {ss_err}")
+                log.warning(f"Nao foi possivel tirar screenshot: {ss_err}")
+
         screenshot = SCREENSHOT_ERRO if SCREENSHOT_ERRO.exists() else None
+
         try:
             enviar_email_erro(
                 erro=e,
@@ -143,7 +147,8 @@ def main():
                 screenshot_path=screenshot,
             )
         except Exception as email_err:
-            log.error(f"Não foi possível enviar e‑mail de erro: {email_err}")
+            log.error(f"Nao foi possivel enviar e-mail de erro: {email_err}")
+
         raise
 
     finally:

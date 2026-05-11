@@ -5,7 +5,6 @@ inserir.py - Lê o xlsx e insere no MySQL com mapeamento explícito de colunas.
 import os
 import logging
 from pathlib import Path
-from datetime import timezone, timedelta
 
 import pandas as pd
 from sqlalchemy import create_engine, text
@@ -63,6 +62,7 @@ def criar_engine():
 
 
 def _tratar_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+
     # 1. Padronização inicial
     df.columns = df.columns.str.strip().str.upper()
 
@@ -90,18 +90,15 @@ def _tratar_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df.dropna(how="all", inplace=True)
 
     # ── DATA → datetime ───────────────────────────────────────────────────────
-    # O Valecard exporta datas em UTC quando o Action roda em ambiente UTC.
-    # Converte para horário de Brasília (UTC‑3) e devolve datetime "naive".
+    # O Valecard exporta datas já no horário de Brasília — preservar como está
     if "data" in df.columns:
         df["data"] = pd.to_datetime(
             df["data"],
             format="%d/%m/%Y %H:%M:%S",
             errors="coerce",
-            utc=True,  # interpreta como UTC
+            utc=False,
         )
-        brasil_tz = timezone(timedelta(hours=-3))
-        df["data"] = df["data"].dt.tz_convert(brasil_tz)
-        # Remove timezone, deixa naive (sem offset) para compatibilidade
+        # Remove timezone info se existir (garante naive datetime sem conversão)
         if hasattr(df["data"].dtype, "tz") and df["data"].dtype.tz is not None:
             df["data"] = df["data"].dt.tz_localize(None)
 
