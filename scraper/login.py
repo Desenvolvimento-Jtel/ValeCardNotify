@@ -94,7 +94,12 @@ def fazer_login() -> tuple[Page, Browser]:
 
 import os
 import logging
-from playwright.sync_api import sync_playwright, Page, Browser
+from playwright.sync_api import (
+    sync_playwright,
+    Page,
+    Browser,
+    TimeoutError as PlaywrightTimeoutError,
+)
  
 log = logging.getLogger(__name__)
  
@@ -104,6 +109,42 @@ SITE_PASSWORD = os.environ["SITE_PASSWORD"]
 TENANT_VALUE  = "usuarioterceiro.valecard.com.br"
  
 HEADLESS = os.environ.get("HEADLESS", "true").strip().lower() != "false"
+
+
+def _aguardar_networkidle(page: Page, etapa: str, timeout: int) -> None:
+    """Tenta aguardar a rede estabilizar sem usar isso como prova de sucesso."""
+    try:
+        page.wait_for_load_state("networkidle", timeout=timeout)
+        log.info("Rede estabilizada (%s).", etapa)
+    except PlaywrightTimeoutError:
+        log.warning(
+            "A pagina nao atingiu networkidle em %sms (%s). "
+            "Continuando para validar a tela por seus elementos.",
+            timeout,
+            etapa,
+        )
+
+
+def _salvar_diagnostico(page: Page, nome: str) -> None:
+    """Salva a tela e o HTML atuais sem mascarar o erro original do fluxo."""
+    os.makedirs("output", exist_ok=True)
+
+    try:
+        page.screenshot(path=f"output/{nome}.png", full_page=True)
+    except Exception as erro:
+        log.warning("Nao foi possivel salvar o screenshot %s: %s", nome, erro)
+
+    try:
+        with open(f"output/{nome}.html", "w", encoding="utf-8") as arquivo:
+            arquivo.write(page.content())
+    except Exception as erro:
+        log.warning("Nao foi possivel salvar o HTML %s: %s", nome, erro)
+
+    log.info("URL em %s: %s", nome, page.url)
+    try:
+        log.info("Titulo em %s: %s", nome, page.title())
+    except Exception as erro:
+        log.warning("Nao foi possivel ler o titulo em %s: %s", nome, erro)
  
  
 def fazer_login() -> tuple[Page, Browser]:
@@ -130,8 +171,9 @@ def fazer_login() -> tuple[Page, Browser]:
     log.info(f"Acessando: {SITE_URL}")
     page.goto(SITE_URL, wait_until="domcontentloaded", timeout=60_000)
  
-    # Aguarda redirect SAML estabilizar
-    page.wait_for_load_state("networkidle", timeout=30_000)
+    # O portal pode manter polling/telemetria ativos. A confirmação desta etapa
+    # é feita abaixo pelo formulário de login, não apenas pela ociosidade da rede.
+    _aguardar_networkidle(page, "carregamento do SAML", timeout=30_000)
  
     # Screenshot imediato para diagnóstico
     os.makedirs("output", exist_ok=True)
@@ -181,11 +223,12 @@ def fazer_login() -> tuple[Page, Browser]:
     # Após login SAML, aguarda redirect de volta para o portal
     # Pode redirecionar para siag3.valecard.com.br ou fleet.valecard.com.br
     log.info("Aguardando redirect pós-login...")
-    page.wait_for_load_state("networkidle", timeout=60_000)
-    page.wait_for_timeout(5_000)
- 
-    page.screenshot(path="output/pos_login_debug.png")
-    log.info(f"URL após login: {page.url}")
+    _aguardar_networkidle(page, "redirect pos-login", timeout=15_000)
+    page.wait_for_timeout(3_000)
+
+    # Estes artefatos sao salvos mesmo quando a rede nunca fica ociosa. Assim
+    # conseguimos distinguir portal autenticado, tela de login e bloqueio anti-bot.
+    _salvar_diagnostico(page, "pos_login_debug")
  
     # Verifica se o login foi bem-sucedido — aguarda qualquer elemento da tela principal
     try:
